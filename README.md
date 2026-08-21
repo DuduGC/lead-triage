@@ -292,33 +292,10 @@ A suíte cobre:
 - O MVP não tem autenticação de usuários, painel de revisão, atualização/remoção de leads, rate limiting distribuído ou fila assíncrona. A chamada ao Gemini é síncrona e deve ser revisitada se o volume crescer.
 - A classificação é uma heurística v1; alterá-la exige revisar testes e incrementar `versao_regras`.
 
-## Preparação para o GitHub
+## Observações
 
 O projeto inclui CI em `.github/workflows/ci.yml`. A rotina instala `requirements/requirements.txt` e executa testes, Ruff e verificação de formatação sem precisar de PostgreSQL, Gemini ou secrets.
 
-Antes de publicar:
-
-1. Escolha e adicione uma licença (por exemplo, MIT) de acordo com o uso que você deseja permitir.
-2. Crie um repositório vazio no GitHub, sem README, `.gitignore` ou licença gerados pelo site.
-3. Na raiz local, audite e crie o primeiro commit:
-
-   ```powershell
-   git init
-   git branch -M main
-   git add -A
-   git status --short
-   git diff --cached --check
-   git commit -m "chore: prepare lead triage API for GitHub"
-   ```
-
-4. Depois de confirmar que `.env` não está na lista de arquivos staged, associe o remoto escolhido e faça o push:
-
-   ```powershell
-   git remote add origin https://github.com/<USUARIO>/<REPOSITORIO>.git
-   git push -u origin main
-   ```
-
-O push é uma ação externa e deve ser executado por você depois de criar o repositório e escolher a licença. Não envie tokens do GitHub ou secrets pelo chat.
 
 ## Auditoria antes de publicar
 
