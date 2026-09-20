@@ -295,14 +295,3 @@ A suíte cobre:
 ## Integração contínua
 
 O workflow em `.github/workflows/ci.yml` instala `requirements/requirements.txt` e executa os testes, o Ruff e a verificação de formatação. Ele não precisa de PostgreSQL, Gemini ou secrets.
-
-
-## Auditoria antes de publicar
-
-Antes de criar um commit, execute na raiz do projeto:
-
-```powershell
-rg -n --hidden -g '!*.pyc' -g '!.env*' -g '!.venv/**' -g '!.pytest_cache*' -g '!.ruff_cache/**' -g '!work/**' -g '!*.egg-info/**' -g '!README.md' 'AIza|BEGIN PRIVATE KEY|postgresql://|GEMINI_API_KEY=|DATABASE_URL=|APP_API_KEY=' .
-```
-
-A saída deve conter somente nomes de variáveis, placeholders como `<INSIRA_PESSOALMENTE>` e exemplos fictícios. Se aparecer uma chave, senha, URL completa ou dado pessoal real, remova-o e gere uma nova credencial antes de publicar. O `.gitignore` exclui `.env`, ambientes virtuais, caches, builds e artefatos locais e mantém `.env.example`.
