@@ -1,10 +1,10 @@
 # Triagem Inteligente de Leads
 
-API REST em Python para receber mensagens comerciais, extrair sinais semânticos com Gemini e classificar leads com regras determinísticas. O princípio central do MVP é:
+Esta API recebe mensagens comerciais, extrai sinais semânticos com o Gemini e classifica os leads usando regras determinísticas em Python. A separação entre as duas etapas é simples:
 
 > O Gemini interpreta. O Python valida e decide.
 
-O projeto é deliberadamente pequeno: não há frontend, filas, Redis, microsserviços ou CRUD administrativo.
+O MVP concentra-se nesse fluxo. Ele não inclui frontend, filas, Redis, microsserviços ou CRUD administrativo.
 
 ## Problema e escopo do MVP
 
@@ -14,7 +14,7 @@ Uma mensagem livre como:
 Olá, sou uma pessoa da Empresa Exemplo. Precisamos de 15 computadores ainda este mês e queremos um orçamento.
 ```
 
-é transformada em dados estruturados e em uma classificação `QUENTE`, `MORNO` ou `FRIO`. Quando a extração não é confiável, o lead é salvo como `REVIEW_REQUIRED`; o sistema não inventa dados nem deixa o LLM escolher a classificação.
+vira um registro estruturado e recebe uma classificação `QUENTE`, `MORNO` ou `FRIO`. Se a extração não for confiável, o serviço salva o lead como `REVIEW_REQUIRED` e interrompe a classificação.
 
 O MVP oferece:
 
@@ -42,7 +42,7 @@ flowchart LR
     RV --> D
 ```
 
-O conteúdo do lead é enviado ao modelo dentro de um objeto JSON e é explicitamente tratado como dado não confiável. O prompt do sistema proíbe score, classificação, SQL, comandos e ações; o Python valida o retorno antes da persistência.
+O conteúdo do lead segue para o modelo dentro de um objeto JSON e é tratado como dado não confiável. As instruções do sistema impedem que o modelo produza score, classificação, SQL, comandos ou ações. O Python valida o retorno antes de gravá-lo.
 
 ## Stack e estrutura
 
@@ -70,7 +70,7 @@ tests/               testes unitários, integração em SQLite e segurança
 
 ## Regras de negócio
 
-O score máximo é 100. Os pontos são calculados apenas quando os sinais foram extraídos e validados:
+O score vai de 0 a 100. O serviço só soma pontos depois de validar os sinais extraídos:
 
 | Sinal | Condição | Pontos |
 | --- | --- | ---: |
@@ -85,11 +85,11 @@ O score máximo é 100. Os pontos são calculados apenas quando os sinais foram 
 - `40 <= score < 70`: `MORNO`;
 - `score < 40`: `FRIO`.
 
-`versao_regras` é persistida para tornar mudanças futuras auditáveis. O Gemini nunca retorna nem controla score ou classificação.
+O serviço persiste `versao_regras` para que alterações futuras possam ser auditadas. O Gemini não retorna nem controla o score ou a classificação.
 
 ## Modelo PostgreSQL
 
-A tabela `leads` guarda somente os dados necessários ao fluxo: UUID, campos extraídos, mensagem original, score/classificação, status de processamento, motivo de revisão, versão das regras e timestamps.
+A tabela `leads` armazena o UUID, a mensagem original, os campos extraídos, o resultado da classificação, o status de processamento, o motivo de revisão, a versão das regras e os timestamps.
 
 Constraints importantes:
 
@@ -100,11 +100,11 @@ Constraints importantes:
 - `PROCESSED` exige score/classificação e não aceita `review_reason`;
 - `REVIEW_REQUIRED` exige `review_reason` e não aceita score/classificação.
 
-As consultas do repositório usam SQLAlchemy com parâmetros. Não há concatenação de entrada em SQL.
+O repositório usa SQLAlchemy com parâmetros. Nenhuma entrada do usuário é concatenada em uma consulta SQL.
 
 ## API REST
 
-Todas as rotas de negócio exigem o header `X-API-Key`. O valor é comparado com `secrets.compare_digest` e nunca aparece em logs.
+As rotas de negócio exigem o header `X-API-Key`. A comparação usa `secrets.compare_digest`, e a chave não aparece nos logs.
 
 | Método | Rota | Uso |
 | --- | --- | --- |
@@ -141,7 +141,7 @@ Exemplo resumido de resposta processada (dados fictícios):
 }
 ```
 
-Uma resposta processada inclui `score`, `classificacao`, `motivos`, os campos extraídos e `status_processamento: "PROCESSED"`; a `versao_regras` fica persistida para auditoria. Uma resposta em revisão mantém `score` e `classificacao` nulos e informa somente um motivo seguro, como `gemini_timeout` ou `invalid_llm_output`.
+Uma resposta processada traz `score`, `classificacao`, `motivos`, os campos extraídos e `status_processamento: "PROCESSED"`. A aplicação persiste `versao_regras` para auditoria. Em uma resposta de revisão, `score` e `classificacao` ficam nulos e `review_reason` informa um motivo seguro, como `gemini_timeout` ou `invalid_llm_output`.
 
 Erros seguem o formato:
 
@@ -155,11 +155,11 @@ Erros seguem o formato:
 }
 ```
 
-Códigos principais: `201` (criado), `200` (consulta), `401` (chave ausente/incorreta), `404` (UUID inexistente), `413` (corpo acima do limite), `422` (payload inválido), `503` (banco indisponível) e `500` (erro interno genérico).
+Códigos principais: `201` (criação), `200` (consulta), `401` (chave ausente ou incorreta), `404` (UUID inexistente), `413` (corpo acima do limite), `422` (payload inválido), `503` (banco indisponível) e `500` (erro interno genérico).
 
 ## Configuração local
 
-Execute os comandos abaixo no PowerShell, na raiz do projeto.
+Na raiz do projeto, execute os comandos a seguir no PowerShell.
 
 1. Criar o ambiente e instalar dependências:
 
@@ -168,8 +168,8 @@ Execute os comandos abaixo no PowerShell, na raiz do projeto.
    .\.venv\Scripts\python.exe -m pip install -e ".[dev]"
    ```
 
-   Isso cria o ambiente isolado e instala runtime, testes e lint. O resultado esperado é `Successfully installed lead-triage`.
-   Como alternativa, instale tudo pelo arquivo `requirements\requirements.txt`:
+   O comando cria um ambiente isolado e instala as dependências de runtime, testes e lint. O resultado esperado é `Successfully installed lead-triage`.
+   Também é possível instalar as dependências pelo arquivo `requirements\requirements.txt`:
 
    ```powershell
    .\.venv\Scripts\python.exe -m pip install -r requirements\requirements.txt
@@ -182,7 +182,7 @@ Execute os comandos abaixo no PowerShell, na raiz do projeto.
    notepad .env
    ```
 
-   Preencha `DATABASE_URL`, `GEMINI_API_KEY` e `APP_API_KEY` **pessoalmente** no `.env`. Não envie esses valores pelo chat, não os coloque no código e não faça commit do `.env`.
+   Preencha `DATABASE_URL`, `GEMINI_API_KEY` e `APP_API_KEY` diretamente no `.env`. Mantenha esses valores fora do chat, do código e dos commits.
 
 3. Variáveis disponíveis:
 
@@ -198,7 +198,7 @@ Execute os comandos abaixo no PowerShell, na raiz do projeto.
    | `MAX_BODY_BYTES` | configuração | `16384` |
    | `LOG_LEVEL` | configuração | `INFO` |
 
-Para gerar uma chave da aplicação localmente sem enviá-la a ninguém:
+Para gerar a chave da aplicação sem expô-la, execute localmente:
 
 ```powershell
 \.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(24))"
@@ -206,7 +206,7 @@ Para gerar uma chave da aplicação localmente sem enviá-la a ninguém:
 
 ## PostgreSQL e menor privilégio
 
-Crie os papéis abaixo conectado ao PostgreSQL como administrador, substituindo os marcadores localmente. Os marcadores não são credenciais reais.
+Conectado ao PostgreSQL como administrador, crie os papéis abaixo e substitua os marcadores localmente. Os marcadores não são credenciais reais.
 
 ```sql
 CREATE ROLE lead_triage_migrator LOGIN PASSWORD '<SENHA_FORTE_DO_MIGRADOR>';
@@ -218,7 +218,7 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE ON SCHEMA public TO lead_triage_app;
 ```
 
-O papel `lead_triage_migrator` é usado somente para `alembic upgrade head` e pode criar/alterar tabelas. Depois da migração, conceda ao runtime apenas as operações do MVP:
+Use o papel `lead_triage_migrator` somente para `alembic upgrade head`, pois ele pode criar e alterar tabelas. Depois da migração, conceda ao runtime apenas as operações necessárias ao MVP:
 
 ```sql
 GRANT SELECT, INSERT ON TABLE leads TO lead_triage_app;
@@ -226,7 +226,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE lead_triage_migrator IN SCHEMA public
   GRANT SELECT, INSERT ON TABLES TO lead_triage_app;
 ```
 
-O papel da aplicação não recebe `CREATE`, `DROP`, `ALTER` ou `DELETE`. Como o Alembic lê `DATABASE_URL`, use temporariamente a URL do migrador para aplicar a migração e depois restaure no `.env` a URL do papel `lead_triage_app`. Em um ambiente real, mantenha as credenciais de migração fora do runtime.
+O papel da aplicação não recebe `CREATE`, `DROP`, `ALTER` ou `DELETE`. Como o Alembic lê `DATABASE_URL`, use temporariamente a URL do migrador para aplicar a migração e depois restaure no `.env` a URL do papel `lead_triage_app`. Em produção, mantenha as credenciais de migração fora do processo da aplicação.
 
 Aplicar a migração, na raiz do projeto:
 
@@ -234,17 +234,17 @@ Aplicar a migração, na raiz do projeto:
 \.venv\Scripts\alembic.exe upgrade head
 ```
 
-Resultado esperado: a revisão `0001_create_leads` é aplicada sem erro. Se aparecer erro de autenticação/conexão, confira a URL local e se o PostgreSQL está acessível; não cole a URL no chat.
+A revisão `0001_create_leads` deve ser aplicada sem erro. Se houver falha de autenticação ou conexão, confira a URL local e a disponibilidade do PostgreSQL. Não cole a URL no chat.
 
 ## Executar a API
 
-Com o `.env` preenchido e a migração aplicada:
+Depois de preencher o `.env` e aplicar a migração, inicie a API:
 
 ```powershell
 \.venv\Scripts\uvicorn.exe app.main:app --reload
 ```
 
-Resultado esperado: servidor em `http://127.0.0.1:8000`. A documentação interativa do FastAPI fica em `/docs`.
+O servidor ficará disponível em `http://127.0.0.1:8000`, e a documentação interativa do FastAPI ficará em `/docs`.
 
 Exemplo PowerShell (substitua a chave apenas no seu terminal):
 
@@ -259,11 +259,11 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/leads `
   -Headers $headers -ContentType "application/json" -Body $body
 ```
 
-Para listar, use `Invoke-RestMethod -Method Get -Uri http://127.0.0.1:8000/leads -Headers $headers`. `401` indica header ausente/incorreto; `413` indica corpo acima do limite; `503` indica banco indisponível ou falha não recuperável na persistência.
+Para listar leads, use `Invoke-RestMethod -Method Get -Uri http://127.0.0.1:8000/leads -Headers $headers`. `401` indica header ausente ou incorreto; `413` indica corpo acima do limite; `503` indica banco indisponível ou falha não recuperável na persistência.
 
 ## Testes e qualidade
 
-Na raiz do projeto:
+Na raiz do projeto, execute:
 
 ```powershell
 \.venv\Scripts\python.exe -m pytest -q
@@ -271,7 +271,7 @@ Na raiz do projeto:
 \.venv\Scripts\ruff.exe format --check app tests alembic
 ```
 
-Os testes usam SQLite em memória e fakes do Gemini; não precisam de PostgreSQL, `GEMINI_API_KEY` válida ou chamadas externas. O resultado validado nesta etapa foi `73 passed`, Ruff sem erros e 31 arquivos formatados.
+Os testes usam SQLite em memória e fakes do Gemini. Por isso, não precisam de PostgreSQL, de uma `GEMINI_API_KEY` válida ou de chamadas externas. A validação registrada nesta etapa foi `73 passed`, Ruff sem erros e 31 arquivos formatados.
 
 A suíte cobre:
 
@@ -282,27 +282,27 @@ A suíte cobre:
 - timeout, rate limit, indisponibilidade, autenticação e output inválido do Gemini;
 - SQL injection, prompt injection e ausência de PII/secrets nos logs.
 
-## Segurança, privacidade e limitações
+## Segurança, privacidade e limites
 
-- Entrada do usuário é não confiável; limites e schemas são aplicados antes do processamento.
-- Prompt injection é mitigado por separação de instruções/dados, schema fechado, evidências e isolamento das regras Python. Filtros de palavras não são a defesa principal.
-- O Gemini recebe somente a mensagem necessária para extração; nunca recebe chaves, URLs de banco, headers ou configurações internas.
-- Logs usam uma allowlist de campos operacionais e não registram mensagem completa, e-mail, telefone, tokens ou connection strings.
-- Erros externos são mapeados para mensagens genéricas sem stack trace, SQL ou paths.
-- O MVP não tem autenticação de usuários, painel de revisão, atualização/remoção de leads, rate limiting distribuído ou fila assíncrona. A chamada ao Gemini é síncrona e deve ser revisitada se o volume crescer.
-- A classificação é uma heurística v1; alterá-la exige revisar testes e incrementar `versao_regras`.
+- A entrada do usuário é não confiável. Limites e schemas são aplicados antes do processamento.
+- Prompt injection é mitigado pela separação entre instruções e dados, pelo schema fechado, pelas evidências e pelo isolamento das regras em Python. Filtros de palavras não são a defesa principal.
+- O Gemini recebe somente a mensagem necessária para a extração. Chaves, URLs de banco, headers e configurações internas ficam fora do request.
+- Os logs usam uma allowlist de campos operacionais. Mensagem completa, e-mail, telefone, tokens e connection strings não são registrados.
+- Falhas externas viram mensagens genéricas, sem stack trace, SQL ou paths.
+- O MVP ainda não tem autenticação de usuários, painel de revisão, atualização ou remoção de leads, rate limiting distribuído ou fila assíncrona. A chamada ao Gemini é síncrona e precisa ser revista se o volume crescer.
+- A classificação é uma heurística v1. Qualquer alteração exige revisar os testes e incrementar `versao_regras`.
 
-## Observações
+## Integração contínua
 
-O projeto inclui CI em `.github/workflows/ci.yml`. A rotina instala `requirements/requirements.txt` e executa testes, Ruff e verificação de formatação sem precisar de PostgreSQL, Gemini ou secrets.
+O workflow em `.github/workflows/ci.yml` instala `requirements/requirements.txt` e executa os testes, o Ruff e a verificação de formatação. Ele não precisa de PostgreSQL, Gemini ou secrets.
 
 
 ## Auditoria antes de publicar
 
-Na raiz do projeto, revise a saída abaixo antes de qualquer commit:
+Antes de criar um commit, execute na raiz do projeto:
 
 ```powershell
 rg -n --hidden -g '!*.pyc' -g '!.env*' -g '!.venv/**' -g '!.pytest_cache*' -g '!.ruff_cache/**' -g '!work/**' -g '!*.egg-info/**' -g '!README.md' 'AIza|BEGIN PRIVATE KEY|postgresql://|GEMINI_API_KEY=|DATABASE_URL=|APP_API_KEY=' .
 ```
 
-É esperado encontrar apenas nomes de variáveis, placeholders como `<INSIRA_PESSOALMENTE>` e exemplos explicitamente fictícios. Se aparecer uma chave, senha, URL completa ou dado pessoal real, remova-o e gere uma nova credencial antes de publicar. O `.gitignore` exclui `.env`, ambientes virtuais, caches, builds e artefatos locais, mantendo apenas `.env.example`.
+A saída deve conter somente nomes de variáveis, placeholders como `<INSIRA_PESSOALMENTE>` e exemplos fictícios. Se aparecer uma chave, senha, URL completa ou dado pessoal real, remova-o e gere uma nova credencial antes de publicar. O `.gitignore` exclui `.env`, ambientes virtuais, caches, builds e artefatos locais e mantém `.env.example`.
